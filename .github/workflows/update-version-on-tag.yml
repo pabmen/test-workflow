@@ -122,17 +122,5 @@ jobs:
             automated
           delete-branch: true
       
-      - name: Update tag to point to new commit
-        if: steps.check_workflow_commit.outputs.is_workflow_commit != 'true' && success() && steps.commit_changes.outputs.branch_name != '' && steps.commit_changes.outputs.branch_name != 'no-changes'
-        run: |
-          # Delete the old tag locally and remotely
-          git tag -d ${{ steps.tag_name.outputs.tag_name }} || true
-          git push origin :refs/tags/${{ steps.tag_name.outputs.tag_name }} || true
-          
-          # Create new tag pointing to the current commit
-          git tag ${{ steps.tag_name.outputs.tag_name }}
-          
-          # Push the new tag
-          git push origin ${{ steps.tag_name.outputs.tag_name }}
-          
-          echo "Successfully updated tag ${{ steps.tag_name.outputs.tag_name }} to point to new commit"
+      # Removed tag update step to prevent infinite loop
+      # The tag will remain pointing to the original commit
