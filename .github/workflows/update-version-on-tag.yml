@@ -123,24 +123,17 @@ jobs:
         id: commit_changes
       
       - name: Create Pull Request
-        if: steps.commit_changes.outputs.branch_name != '' && steps.commit_changes.outputs.branch_name != 'no-changes'
-        uses: peter-evans/create-pull-request@v5
-        with:
-          token: ${{ secrets.WORKFLOW_TOKEN }}
-          branch: ${{ steps.commit_changes.outputs.branch_name }}
-          base: ${{ github.event.repository.default_branch }}
-          title: "chore: update version to ${{ steps.tag_name.outputs.clean_version }}"
-          body: |
-            This PR updates the version in package.json to ${{ steps.tag_name.outputs.clean_version }}
-            
-            **Changes:**
-            - Updated version in package.json from previous version to ${{ steps.tag_name.outputs.clean_version }}
-            
-            **Triggered by:** Tag push `${{ steps.tag_name.outputs.tag_name }}`
-          labels: |
-            version-update
-            automated
-          delete-branch: true
+        run: |
+          echo "=== DEBUGGING: Create PR step ==="
+          echo "Branch name output: ${{ steps.commit_changes.outputs.branch_name }}"
+          echo "Tag name: ${{ steps.tag_name.outputs.tag_name }}"
+          echo "Clean version: ${{ steps.tag_name.outputs.clean_version }}"
+          
+          if [ "${{ steps.commit_changes.outputs.branch_name }}" != "" ] && [ "${{ steps.commit_changes.outputs.branch_name }}" != "no-changes" ]; then
+            echo "Creating PR for branch: ${{ steps.commit_changes.outputs.branch_name }}"
+          else
+            echo "No branch created, skipping PR creation"
+          fi
       
       # Removed tag update step to prevent infinite loop
       # The tag will remain pointing to the original commit
