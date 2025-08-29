@@ -21,6 +21,11 @@ jobs:
     name: Check CHANGELOG.md for updates
     
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
       - name: Check if this is a version update commit
         id: check_version_commit
         run: |
@@ -33,12 +38,6 @@ jobs:
             echo "is_version_commit=false" >> $GITHUB_OUTPUT
             echo "This is a regular commit, proceeding with changelog check..."
           fi
-      
-      - name: Checkout code
-        if: steps.check_version_commit.outputs.is_version_commit != 'true'
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
           
       - name: Check for CHANGELOG.md changes
         if: steps.check_version_commit.outputs.is_version_commit != 'true'
