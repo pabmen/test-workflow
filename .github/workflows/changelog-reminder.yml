@@ -1,4 +1,4 @@
-name: Changelog Check (Simple)
+name: Changelog UpdateCheck
 
 on:
   push:
@@ -12,7 +12,7 @@ on:
 jobs:
   changelog-check:
     runs-on: ubuntu-latest
-    name: Check CHANGELOG.md updates
+    name: Check CHANGELOG.md for updates
     
     steps:
       - name: Checkout code
