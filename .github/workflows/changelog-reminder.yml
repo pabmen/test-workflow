@@ -20,6 +20,11 @@ jobs:
         with:
           fetch-depth: 0
           
+      - name: Install jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+          
       - name: Check for CHANGELOG.md changes
         id: check_changelog
         run: |
@@ -27,18 +32,39 @@ jobs:
           echo "Event: ${{ github.event_name }}"
           echo "Ref: ${{ github.ref }}"
           
-          # For push events on feature branches, we need to compare against master
-          # to see if CHANGELOG.md has been modified anywhere in this branch
-          if git show-ref --verify --quiet refs/remotes/origin/master; then
-            BASE_REF="origin/master"
-          elif git show-ref --verify --quiet refs/heads/master; then  
-            BASE_REF="master"
-          else
-            echo "⚠️  Cannot find master branch, using HEAD~1"
-            BASE_REF="HEAD~1"
-          fi
+          # Get the current branch name
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          echo "Branch: $BRANCH_NAME"
           
-          echo "Comparing against: $BASE_REF"
+          # Try to find associated PR for this branch
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # We have direct PR context
+            BASE_REF="${{ github.event.pull_request.base.sha }}"
+            echo "PR event detected - using base SHA: $BASE_REF"
+          else
+            # For push events, try to find the PR and get its base
+            echo "Push event - trying to find associated PR..."
+            
+            # Get PR info using GitHub API
+            PR_INFO=$(curl -s -H "Authorization: token ${{ github.token }}" \
+              "https://api.github.com/repos/${{ github.repository }}/pulls?head=${{ github.repository_owner }}:$BRANCH_NAME&state=open")
+            
+            if echo "$PR_INFO" | jq -e '.[0]' > /dev/null 2>&1; then
+              BASE_REF=$(echo "$PR_INFO" | jq -r '.[0].base.sha')
+              echo "Found PR - using base SHA: $BASE_REF"
+            else
+              # Fallback to master comparison
+              if git show-ref --verify --quiet refs/remotes/origin/master; then
+                BASE_REF="origin/master"
+              elif git show-ref --verify --quiet refs/heads/master; then  
+                BASE_REF="master"
+              else
+                echo "⚠️  Cannot find master branch, using HEAD~1"
+                BASE_REF="HEAD~1"
+              fi
+              echo "No PR found - comparing against: $BASE_REF"
+            fi
+          fi
           
           # Show changed files for debugging
           echo "All changed files in this branch:"
