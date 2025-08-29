@@ -1,0 +1,94 @@
+name: Update Version on Tag Push
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on version tags like v1.0.0, v2.1.3, etc.
+      - '*'   # Or triggers on any tag if you prefer
+
+permissions:
+  contents: write  # Needed to push commits and tags
+  actions: read    # Needed to read workflow files
+
+jobs:
+  update-version:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for proper tag handling
+          token: ${{ secrets.GITHUB_TOKEN }}  # Use GITHUB_TOKEN for authentication
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Extract tag name
+        id: tag_name
+        run: |
+          # Remove 'refs/tags/' prefix and 'v' prefix if present
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          CLEAN_VERSION=${TAG_NAME#v}
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "clean_version=$CLEAN_VERSION" >> $GITHUB_OUTPUT
+          echo "Original tag: $TAG_NAME"
+          echo "Clean version: $CLEAN_VERSION"
+      
+      - name: Update version in package.json
+        run: |
+          # Use the existing script to update version
+          node ./scripts/update-version-tag.js "${{ steps.tag_name.outputs.tag_name }}"
+      
+      - name: Verify changes
+        run: |
+          echo "Package.json changes:"
+          git diff package.json || echo "No changes detected"
+      
+      - name: Commit and push changes
+        run: |
+          # Configure git
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # Add the modified package.json
+          git add package.json
+          
+          # Check if there are changes to commit
+          if ! git diff --cached --quiet; then
+            # Create commit with version update
+            git commit -m "chore: update version in package.json to ${{ steps.tag_name.outputs.clean_version }}"
+            
+            # Push the commit back to the repository
+            git push origin HEAD:${{ github.ref_name }}
+            
+            echo "Successfully updated package.json version and pushed changes"
+          else
+            echo "No changes needed in package.json"
+          fi
+      
+      - name: Update tag to point to new commit
+        if: success()
+        run: |
+          # Only update tag if we made changes
+          if ! git diff --cached --quiet; then
+            # Delete the old tag locally and remotely
+            git tag -d ${{ steps.tag_name.outputs.tag_name }} || true
+            git push origin :refs/tags/${{ steps.tag_name.outputs.tag_name }} || true
+            
+            # Create new tag pointing to the current commit
+            git tag ${{ steps.tag_name.outputs.tag_name }}
+            
+            # Push the new tag
+            git push origin ${{ steps.tag_name.outputs.tag_name }}
+            
+            echo "Successfully updated tag ${{ steps.tag_name.outputs.tag_name }} to point to new commit"
+          else
+            echo "No changes made, keeping original tag"
+          fi
