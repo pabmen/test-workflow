@@ -1,0 +1,138 @@
+name: Update Version on Tag Push
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on version tags like v1.0.0, v2.1.3, etc.
+  workflow_dispatch:  # Allow manual trigger for testing
+
+permissions:
+  contents: write  # Needed to push commits and tags
+  actions: read    # Needed to read workflow files
+  pull-requests: write  # Needed to create pull requests
+
+jobs:
+  update-version:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for proper tag handling
+          token: ${{ secrets.WORKFLOW_TOKEN }}  # Use WORKFLOW_TOKEN for authentication
+          ref: ${{ github.event.repository.default_branch }}  # Checkout the default branch instead of the tag
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      # Removed npm install step - we don't need to install dependencies
+      # since we only want to update the version in package.json
+      
+      - name: Extract tag name
+        id: tag_name
+        run: |
+          # Remove 'refs/tags/' prefix and 'v' prefix if present
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          CLEAN_VERSION=${TAG_NAME#v}
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "clean_version=$CLEAN_VERSION" >> $GITHUB_OUTPUT
+          echo "Original tag: $TAG_NAME"
+          echo "Clean version: $CLEAN_VERSION"
+      
+      - name: Check if this is a workflow-generated commit
+        id: check_workflow_commit
+        run: |
+          # Check if the commit message indicates this was created by our workflow
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          if [[ "$COMMIT_MSG" == *"chore: update version in package.json"* ]]; then
+            echo "is_workflow_commit=true" >> $GITHUB_OUTPUT
+            echo "This appears to be a workflow-generated commit, skipping..."
+          else
+            echo "is_workflow_commit=false" >> $GITHUB_OUTPUT
+            echo "This is a regular commit, proceeding..."
+          fi
+      
+      - name: Update version in package.json
+        if: steps.check_workflow_commit.outputs.is_workflow_commit != 'true'
+        run: |
+          # Use the existing script to update version
+          node ./scripts/update-version-tag.js "${{ steps.tag_name.outputs.tag_name }}"
+      
+      - name: Clean up unwanted files
+        if: steps.check_workflow_commit.outputs.is_workflow_commit != 'true'
+        run: |
+          git add package.json
+      
+      - name: Verify changes
+        if: steps.check_workflow_commit.outputs.is_workflow_commit != 'true'
+        run: |
+          echo "Package.json changes:"
+          git diff --cached package.json || echo "No changes detected"
+          echo "Total files staged:"
+          git diff --cached --name-only || echo "No files staged"
+      
+      - name: Create branch and commit changes
+        if: steps.check_workflow_commit.outputs.is_workflow_commit != 'true'
+        run: |
+          # Configure git
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # Check if there are changes to commit (package.json should already be staged)
+          if ! git diff --cached --quiet; then
+            # Create a new branch for the version update
+            BRANCH_NAME="update-version-${{ steps.tag_name.outputs.clean_version }}"
+            git checkout -b $BRANCH_NAME
+            
+            # Create commit with version update
+            git commit -m "chore: update version in package.json to ${{ steps.tag_name.outputs.clean_version }}"
+            
+            # Push the new branch
+            git push origin $BRANCH_NAME
+            
+            echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+            echo "Successfully created branch $BRANCH_NAME and pushed changes"
+          else
+            echo "branch_name=no-changes" >> $GITHUB_OUTPUT
+            echo "No changes needed in package.json"
+          fi
+        id: commit_changes
+      
+      - name: Create Pull Request
+        if: steps.check_workflow_commit.outputs.is_workflow_commit != 'true' && steps.commit_changes.outputs.branch_name != '' && steps.commit_changes.outputs.branch_name != 'no-changes'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.WORKFLOW_TOKEN }}
+          branch: ${{ steps.commit_changes.outputs.branch_name }}
+          base: ${{ github.event.repository.default_branch }}
+          title: "chore: update version to ${{ steps.tag_name.outputs.clean_version }}"
+          body: |
+            This PR updates the version in package.json to ${{ steps.tag_name.outputs.clean_version }}
+            
+            **Changes:**
+            - Updated version in package.json from previous version to ${{ steps.tag_name.outputs.clean_version }}
+            
+            **Triggered by:** Tag push `${{ steps.tag_name.outputs.tag_name }}`
+          labels: |
+            version-update
+            automated
+          delete-branch: true
+      
+      - name: Update tag to point to new commit
+        if: steps.check_workflow_commit.outputs.is_workflow_commit != 'true' && success() && steps.commit_changes.outputs.branch_name != '' && steps.commit_changes.outputs.branch_name != 'no-changes'
+        run: |
+          # Delete the old tag locally and remotely
+          git tag -d ${{ steps.tag_name.outputs.tag_name }} || true
+          git push origin :refs/tags/${{ steps.tag_name.outputs.tag_name }} || true
+          
+          # Create new tag pointing to the current commit
+          git tag ${{ steps.tag_name.outputs.tag_name }}
+          
+          # Push the new tag
+          git push origin ${{ steps.tag_name.outputs.tag_name }}
+          
+          echo "Successfully updated tag ${{ steps.tag_name.outputs.tag_name }} to point to new commit"

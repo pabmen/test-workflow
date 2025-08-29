@@ -26,11 +26,23 @@ jobs:
         with:
           fetch-depth: 0
       
-      - name: Check if this is a version update commit
+      - name: Check if this is a version update commit or branch
         id: check_version_commit
         run: |
           # Check if the commit message indicates this was created by the version update workflow
           COMMIT_MSG=$(git log -1 --pretty=%B)
+          
+          # Check if this is a PR from an update-version branch
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            PR_HEAD_REF="${{ github.event.pull_request.head.ref }}"
+            if [[ "$PR_HEAD_REF" == update-version-* ]]; then
+              echo "is_version_commit=true" >> $GITHUB_OUTPUT
+              echo "This is a PR from update-version branch ($PR_HEAD_REF), skipping changelog check..."
+              exit 0
+            fi
+          fi
+          
+          # Check if the commit message indicates this was created by the version update workflow
           if [[ "$COMMIT_MSG" == *"chore: update version in package.json"* ]]; then
             echo "is_version_commit=true" >> $GITHUB_OUTPUT
             echo "This is a version update commit, skipping changelog check..."
