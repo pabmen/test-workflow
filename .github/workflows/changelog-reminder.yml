@@ -1,0 +1,74 @@
+name: Changelog Check (Simple)
+
+on:
+  push:
+    branches-ignore:
+      - master
+  pull_request:
+    branches:
+      - master
+    types: [opened, synchronize, reopened]
+
+jobs:
+  changelog-check:
+    runs-on: ubuntu-latest
+    name: Check CHANGELOG.md updates
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Check for CHANGELOG.md changes
+        id: check_changelog
+        run: |
+          echo "🔍 Checking for CHANGELOG.md changes..."
+          
+          # Try to fetch master, fallback if not available
+          if git show-ref --verify --quiet refs/remotes/origin/master; then
+            BASE_REF="origin/master"
+          elif git show-ref --verify --quiet refs/heads/master; then  
+            BASE_REF="master"
+          else
+            BASE_REF="HEAD~1"
+          fi
+          
+          echo "Comparing against: $BASE_REF"
+          
+          # Show changed files for debugging
+          echo "Changed files:"
+          git diff --name-only $BASE_REF...HEAD
+          
+          # Check if CHANGELOG.md was modified
+          if git diff --name-only $BASE_REF...HEAD | grep -q "^CHANGELOG\.md$"; then
+            echo "changelog_updated=true" >> $GITHUB_OUTPUT
+            echo "✅ CHANGELOG.md has been updated"
+          else
+            echo "changelog_updated=false" >> $GITHUB_OUTPUT
+            echo "⚠️  CHANGELOG.md has NOT been updated"
+          fi
+          
+      - name: Show reminder (would comment on PR)
+        if: steps.check_changelog.outputs.changelog_updated == 'false'
+        run: |
+          echo "📝 WOULD POST THIS COMMENT ON PR:"
+          echo "=================================="
+          echo "⚠️ This PR does not include changes to CHANGELOG.md"
+          echo ""
+          echo "Please consider updating the changelog if this PR includes:"
+          echo "- New features"
+          echo "- Bug fixes" 
+          echo "- Breaking changes"
+          echo "- Important updates"
+          echo ""
+          echo "Note: This is just a friendly reminder!"
+          echo ""
+          echo "❌ FAILING CHECK TO GET YOUR ATTENTION"
+          exit 1
+          
+      - name: Success message
+        if: steps.check_changelog.outputs.changelog_updated == 'true'
+        run: |
+          echo "🎉 SUCCESS: CHANGELOG.md has been updated!"
+          echo "Thank you for documenting your changes."
