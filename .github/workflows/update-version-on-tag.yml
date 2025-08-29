@@ -91,39 +91,26 @@ jobs:
       
       - name: Create branch and commit changes
         run: |
-          echo "=== DEBUGGING: Create branch step ==="
-          echo "Check workflow commit output: ${{ steps.check_workflow_commit.outputs.is_workflow_commit }}"
-          
           # Configure git
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
-          # Check if there are changes to commit (package.json should already be staged)
-          echo "Checking for staged changes..."
-          git diff --cached --name-only
+          # Create a new branch for the version update
+          BRANCH_NAME="update-version-${{ steps.tag_name.outputs.clean_version }}"
+          echo "Creating branch: $BRANCH_NAME"
+          git checkout -b $BRANCH_NAME
           
-          if ! git diff --cached --quiet; then
-            # Create a new branch for the version update
-            BRANCH_NAME="update-version-${{ steps.tag_name.outputs.clean_version }}"
-            echo "Creating branch: $BRANCH_NAME"
-            git checkout -b $BRANCH_NAME
-            
-            # Create commit with version update
-            git commit -m "chore: update version in package.json to ${{ steps.tag_name.outputs.clean_version }}"
-            
-            # Push the new branch
-            git push origin $BRANCH_NAME
-            
-            echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
-            echo "Successfully created branch $BRANCH_NAME and pushed changes"
-          else
-            echo "branch_name=no-changes" >> $GITHUB_OUTPUT
-            echo "No changes needed in package.json"
-          fi
+          # Create commit with version update
+          git commit -m "chore: update version in package.json to ${{ steps.tag_name.outputs.clean_version }}"
+          
+          # Push the new branch
+          git push origin $BRANCH_NAME
+          
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "Successfully created branch $BRANCH_NAME and pushed changes"
         id: commit_changes
       
       - name: Create Pull Request
-        if: steps.commit_changes.outputs.branch_name != '' && steps.commit_changes.outputs.branch_name != 'no-changes'
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.WORKFLOW_TOKEN }}
