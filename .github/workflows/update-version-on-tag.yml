@@ -20,6 +20,7 @@ jobs:
         with:
           fetch-depth: 0  # Fetch all history for proper tag handling
           token: ${{ secrets.GITHUB_TOKEN }}  # Use GITHUB_TOKEN for authentication
+          ref: ${{ github.event.repository.default_branch }}  # Checkout the default branch instead of the tag
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -51,11 +52,15 @@ jobs:
           echo "Package.json changes:"
           git diff package.json || echo "No changes detected"
       
-      - name: Commit and push changes
+      - name: Create branch and commit changes
         run: |
           # Configure git
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
+          
+          # Create a new branch for the version update
+          BRANCH_NAME="update-version-${{ steps.tag_name.outputs.clean_version }}"
+          git checkout -b $BRANCH_NAME
           
           # Add the modified package.json
           git add package.json
@@ -65,30 +70,47 @@ jobs:
             # Create commit with version update
             git commit -m "chore: update version in package.json to ${{ steps.tag_name.outputs.clean_version }}"
             
-            # Push the commit back to the default branch
-            git push origin HEAD:${{ github.event.repository.default_branch }}
+            # Push the new branch
+            git push origin $BRANCH_NAME
             
-            echo "Successfully updated package.json version and pushed changes"
+            echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+            echo "Successfully created branch $BRANCH_NAME and pushed changes"
           else
             echo "No changes needed in package.json"
           fi
+        id: commit_changes
+      
+      - name: Create Pull Request
+        if: steps.commit_changes.outputs.branch_name != ''
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ steps.commit_changes.outputs.branch_name }}
+          base: ${{ github.event.repository.default_branch }}
+          title: "chore: update version to ${{ steps.tag_name.outputs.clean_version }}"
+          body: |
+            This PR updates the version in package.json to ${{ steps.tag_name.outputs.clean_version }}
+            
+            **Changes:**
+            - Updated version in package.json from previous version to ${{ steps.tag_name.outputs.clean_version }}
+            
+            **Triggered by:** Tag push `${{ steps.tag_name.outputs.tag_name }}`
+          labels: |
+            version-update
+            automated
+          delete-branch: true
       
       - name: Update tag to point to new commit
-        if: success()
+        if: success() && steps.commit_changes.outputs.branch_name != ''
         run: |
-          # Only update tag if we made changes
-          if ! git diff --cached --quiet; then
-            # Delete the old tag locally and remotely
-            git tag -d ${{ steps.tag_name.outputs.tag_name }} || true
-            git push origin :refs/tags/${{ steps.tag_name.outputs.tag_name }} || true
-            
-            # Create new tag pointing to the current commit
-            git tag ${{ steps.tag_name.outputs.tag_name }}
-            
-            # Push the new tag
-            git push origin ${{ steps.tag_name.outputs.tag_name }}
-            
-            echo "Successfully updated tag ${{ steps.tag_name.outputs.tag_name }} to point to new commit"
-          else
-            echo "No changes made, keeping original tag"
-          fi
+          # Delete the old tag locally and remotely
+          git tag -d ${{ steps.tag_name.outputs.tag_name }} || true
+          git push origin :refs/tags/${{ steps.tag_name.outputs.tag_name }} || true
+          
+          # Create new tag pointing to the current commit
+          git tag ${{ steps.tag_name.outputs.tag_name }}
+          
+          # Push the new tag
+          git push origin ${{ steps.tag_name.outputs.tag_name }}
+          
+          echo "Successfully updated tag ${{ steps.tag_name.outputs.tag_name }} to point to new commit"
