@@ -48,6 +48,7 @@ jobs:
         run: |
           # Check if the commit message indicates this was created by our workflow
           COMMIT_MSG=$(git log -1 --pretty=%B)
+          echo "Commit message: $COMMIT_MSG"
           if [[ "$COMMIT_MSG" == *"chore: update version in package.json"* ]]; then
             echo "is_workflow_commit=true" >> $GITHUB_OUTPUT
             echo "This appears to be a workflow-generated commit, skipping..."
@@ -57,35 +58,54 @@ jobs:
           fi
       
       - name: Update version in package.json
-        if: steps.check_workflow_commit.outputs.is_workflow_commit != 'true'
         run: |
+          echo "Current package.json version:"
+          cat package.json | grep '"version"'
+          echo "Tag name: ${{ steps.tag_name.outputs.tag_name }}"
+          echo "Clean version: ${{ steps.tag_name.outputs.clean_version }}"
+          
           # Use the existing script to update version
           node ./scripts/update-version-tag.js "${{ steps.tag_name.outputs.tag_name }}"
+          
+          echo "Updated package.json version:"
+          cat package.json | grep '"version"'
       
       - name: Clean up unwanted files
-        if: steps.check_workflow_commit.outputs.is_workflow_commit != 'true'
         run: |
           git add package.json
       
       - name: Verify changes
-        if: steps.check_workflow_commit.outputs.is_workflow_commit != 'true'
         run: |
+          echo "Current working directory:"
+          pwd
+          echo "Files in current directory:"
+          ls -la
+          echo "Package.json content:"
+          cat package.json
+          echo "Git status:"
+          git status
           echo "Package.json changes:"
           git diff --cached package.json || echo "No changes detected"
           echo "Total files staged:"
           git diff --cached --name-only || echo "No files staged"
       
       - name: Create branch and commit changes
-        if: steps.check_workflow_commit.outputs.is_workflow_commit != 'true'
         run: |
+          echo "=== DEBUGGING: Create branch step ==="
+          echo "Check workflow commit output: ${{ steps.check_workflow_commit.outputs.is_workflow_commit }}"
+          
           # Configure git
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
           # Check if there are changes to commit (package.json should already be staged)
+          echo "Checking for staged changes..."
+          git diff --cached --name-only
+          
           if ! git diff --cached --quiet; then
             # Create a new branch for the version update
             BRANCH_NAME="update-version-${{ steps.tag_name.outputs.clean_version }}"
+            echo "Creating branch: $BRANCH_NAME"
             git checkout -b $BRANCH_NAME
             
             # Create commit with version update
@@ -103,7 +123,7 @@ jobs:
         id: commit_changes
       
       - name: Create Pull Request
-        if: steps.check_workflow_commit.outputs.is_workflow_commit != 'true' && steps.commit_changes.outputs.branch_name != '' && steps.commit_changes.outputs.branch_name != 'no-changes'
+        if: steps.commit_changes.outputs.branch_name != '' && steps.commit_changes.outputs.branch_name != 'no-changes'
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.WORKFLOW_TOKEN }}
