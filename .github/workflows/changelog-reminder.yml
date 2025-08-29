@@ -120,12 +120,16 @@ jobs:
             
             *This is just a friendly reminder!* 😊`;
             
-            github.rest.issues.createComment({
+            const response = await github.rest.issues.createComment({
               issue_number: ${{ steps.get_pr_number.outputs.pr_number }},
               owner: context.repo.owner,
               repo: context.repo.repo,
               body: comment
             });
+            
+            // Save the comment ID for potential deletion later
+            core.setOutput('comment_id', response.data.id);
+            console.log(`Comment created with ID: ${response.data.id}`);
             
       - name: Fail check (no changelog)
         if: steps.check_changelog.outputs.changelog_updated == 'false'
@@ -134,8 +138,44 @@ jobs:
           echo "A comment has been posted on the PR to remind you."
           exit 1
           
+      - name: Delete previous changelog reminder comments
+        if: steps.check_changelog.outputs.changelog_updated == 'true' && steps.get_pr_number.outputs.pr_number != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            console.log('🔍 Looking for previous changelog reminder comments to delete...');
+            
+            // Get all comments on the PR
+            const comments = await github.rest.issues.listComments({
+              issue_number: ${{ steps.get_pr_number.outputs.pr_number }},
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+            
+            // Find and delete comments from github-actions bot that contain "Changelog Reminder"
+            let deletedCount = 0;
+            for (const comment of comments.data) {
+              if (comment.user.login === 'github-actions[bot]' && 
+                  comment.body.includes('Changelog Reminder')) {
+                console.log(`🗑️  Deleting comment ID: ${comment.id}`);
+                await github.rest.issues.deleteComment({
+                  comment_id: comment.id,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo
+                });
+                deletedCount++;
+              }
+            }
+            
+            if (deletedCount > 0) {
+              console.log(`✅ Deleted ${deletedCount} previous changelog reminder comment(s)`);
+            } else {
+              console.log('ℹ️  No previous changelog reminder comments found to delete');
+            }
+            
       - name: Success message
         if: steps.check_changelog.outputs.changelog_updated == 'true'
         run: |
           echo "🎉 SUCCESS: CHANGELOG.md has been updated!"
           echo "Thank you for documenting your changes."
+          echo "Previous changelog reminder comments have been cleaned up."
