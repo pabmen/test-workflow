@@ -24,35 +24,33 @@ jobs:
         id: check_changelog
         run: |
           echo "🔍 Checking for CHANGELOG.md changes..."
+          echo "Event: ${{ github.event_name }}"
+          echo "Ref: ${{ github.ref }}"
           
-          # Determine the correct base reference for comparison
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            # For PRs, compare against the base branch (usually master)
-            BASE_REF="${{ github.event.pull_request.base.sha }}"
-            echo "PR detected - comparing against base: $BASE_REF"
+          # For push events on feature branches, we need to compare against master
+          # to see if CHANGELOG.md has been modified anywhere in this branch
+          if git show-ref --verify --quiet refs/remotes/origin/master; then
+            BASE_REF="origin/master"
+          elif git show-ref --verify --quiet refs/heads/master; then  
+            BASE_REF="master"
           else
-            # For push events, try to fetch master, fallback if not available
-            if git show-ref --verify --quiet refs/remotes/origin/master; then
-              BASE_REF="origin/master"
-            elif git show-ref --verify --quiet refs/heads/master; then  
-              BASE_REF="master"
-            else
-              BASE_REF="HEAD~1"
-            fi
-            echo "Push event - comparing against: $BASE_REF"
+            echo "⚠️  Cannot find master branch, using HEAD~1"
+            BASE_REF="HEAD~1"
           fi
           
+          echo "Comparing against: $BASE_REF"
+          
           # Show changed files for debugging
-          echo "Changed files in this PR/push:"
+          echo "All changed files in this branch:"
           git diff --name-only $BASE_REF...HEAD
           
-          # Check if CHANGELOG.md was modified
+          # Check if CHANGELOG.md was modified anywhere in this branch
           if git diff --name-only $BASE_REF...HEAD | grep -q "^CHANGELOG\.md$"; then
             echo "changelog_updated=true" >> $GITHUB_OUTPUT
-            echo "✅ CHANGELOG.md has been updated"
+            echo "✅ CHANGELOG.md has been updated in this branch"
           else
             echo "changelog_updated=false" >> $GITHUB_OUTPUT
-            echo "⚠️  CHANGELOG.md has NOT been updated"
+            echo "⚠️  CHANGELOG.md has NOT been updated in this branch"
           fi
           
       - name: Show reminder (would comment on PR)
