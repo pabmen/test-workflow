@@ -105,7 +105,7 @@ jobs:
           delete-branch: true
       
       - name: Update tag to point to new commit
-        if: success() && steps.commit_changes.outputs.branch_name != ''
+        if: success() && steps.commit_changes.outputs.branch_name != '' && steps.commit_changes.outputs.branch_name != 'no-changes'
         run: |
           # Delete the old tag locally and remotely
           git tag -d ${{ steps.tag_name.outputs.tag_name }} || true
