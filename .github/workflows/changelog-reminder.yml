@@ -128,19 +128,12 @@ jobs:
             core.setOutput('comment_id', response.data.id);
             console.log(`Comment created with ID: ${response.data.id}`);
             
-      - name: Fail check (no changelog) - PR only
-        if: steps.check_changelog.outputs.changelog_updated == 'false' && github.event_name == 'pull_request'
+      - name: Fail check (no changelog)
+        if: steps.check_changelog.outputs.changelog_updated == 'false'
         run: |
           echo "❌ FAILING CHECK: CHANGELOG.md has not been updated"
           echo "A comment has been posted on the PR to remind you."
           exit 1
-          
-      - name: Warning (no changelog) - Push only
-        if: steps.check_changelog.outputs.changelog_updated == 'false' && github.event_name == 'push'
-        run: |
-          echo "⚠️  WARNING: CHANGELOG.md has not been updated"
-          echo "This is just a friendly reminder while you're iterating."
-          echo "The check will fail when you create a PR."
           
       - name: Delete previous changelog reminder comments
         if: steps.check_changelog.outputs.changelog_updated == 'true' && steps.get_pr_number.outputs.pr_number != ''
