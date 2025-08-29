@@ -59,8 +59,16 @@ jobs:
       - name: Update version in package.json
         if: steps.check_workflow_commit.outputs.is_workflow_commit != 'true'
         run: |
+          echo "Current package.json version:"
+          cat package.json | grep '"version"'
+          echo "Tag name: ${{ steps.tag_name.outputs.tag_name }}"
+          echo "Clean version: ${{ steps.tag_name.outputs.clean_version }}"
+          
           # Use the existing script to update version
           node ./scripts/update-version-tag.js "${{ steps.tag_name.outputs.tag_name }}"
+          
+          echo "Updated package.json version:"
+          cat package.json | grep '"version"'
       
       - name: Clean up unwanted files
         if: steps.check_workflow_commit.outputs.is_workflow_commit != 'true'
@@ -70,6 +78,14 @@ jobs:
       - name: Verify changes
         if: steps.check_workflow_commit.outputs.is_workflow_commit != 'true'
         run: |
+          echo "Current working directory:"
+          pwd
+          echo "Files in current directory:"
+          ls -la
+          echo "Package.json content:"
+          cat package.json
+          echo "Git status:"
+          git status
           echo "Package.json changes:"
           git diff --cached package.json || echo "No changes detected"
           echo "Total files staged:"
