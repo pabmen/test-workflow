@@ -28,7 +28,7 @@ jobs:
           cache: 'npm'
       
       - name: Install dependencies
-        run: npm ci
+        run: npm install
       
       - name: Extract tag name
         id: tag_name
@@ -65,8 +65,8 @@ jobs:
             # Create commit with version update
             git commit -m "chore: update version in package.json to ${{ steps.tag_name.outputs.clean_version }}"
             
-            # Push the commit back to the repository
-            git push origin HEAD:${{ github.ref_name }}
+            # Push the commit back to the default branch
+            git push origin HEAD:${{ github.event.repository.default_branch }}
             
             echo "Successfully updated package.json version and pushed changes"
           else
