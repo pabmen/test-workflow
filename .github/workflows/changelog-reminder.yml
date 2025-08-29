@@ -25,19 +25,25 @@ jobs:
         run: |
           echo "🔍 Checking for CHANGELOG.md changes..."
           
-          # Try to fetch master, fallback if not available
-          if git show-ref --verify --quiet refs/remotes/origin/master; then
-            BASE_REF="origin/master"
-          elif git show-ref --verify --quiet refs/heads/master; then  
-            BASE_REF="master"
+          # Determine the correct base reference for comparison
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # For PRs, compare against the base branch (usually master)
+            BASE_REF="${{ github.event.pull_request.base.sha }}"
+            echo "PR detected - comparing against base: $BASE_REF"
           else
-            BASE_REF="HEAD~1"
+            # For push events, try to fetch master, fallback if not available
+            if git show-ref --verify --quiet refs/remotes/origin/master; then
+              BASE_REF="origin/master"
+            elif git show-ref --verify --quiet refs/heads/master; then  
+              BASE_REF="master"
+            else
+              BASE_REF="HEAD~1"
+            fi
+            echo "Push event - comparing against: $BASE_REF"
           fi
           
-          echo "Comparing against: $BASE_REF"
-          
           # Show changed files for debugging
-          echo "Changed files:"
+          echo "Changed files in this PR/push:"
           git diff --name-only $BASE_REF...HEAD
           
           # Check if CHANGELOG.md was modified
