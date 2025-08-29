@@ -26,11 +26,11 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
       
-      - name: Install dependencies
-        run: npm install
+      # Removed npm install step - we don't need to install dependencies
+      # since we only want to update the version in package.json
       
       - name: Extract tag name
         id: tag_name
@@ -48,10 +48,16 @@ jobs:
           # Use the existing script to update version
           node ./scripts/update-version-tag.js "${{ steps.tag_name.outputs.tag_name }}"
       
+      - name: Clean up unwanted files
+        run: |
+          git add package.json
+      
       - name: Verify changes
         run: |
           echo "Package.json changes:"
-          git diff package.json || echo "No changes detected"
+          git diff --cached package.json || echo "No changes detected"
+          echo "Total files staged:"
+          git diff --cached --name-only || echo "No files staged"
       
       - name: Create branch and commit changes
         run: |
@@ -63,10 +69,7 @@ jobs:
           BRANCH_NAME="update-version-${{ steps.tag_name.outputs.clean_version }}"
           git checkout -b $BRANCH_NAME
           
-          # Add the modified package.json
-          git add package.json
-          
-          # Check if there are changes to commit
+          # Check if there are changes to commit (package.json should already be staged)
           if ! git diff --cached --quiet; then
             # Create commit with version update
             git commit -m "chore: update version in package.json to ${{ steps.tag_name.outputs.clean_version }}"
