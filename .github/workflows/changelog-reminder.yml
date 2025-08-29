@@ -79,22 +79,54 @@ jobs:
             echo "⚠️  CHANGELOG.md has NOT been updated in this branch"
           fi
           
-      - name: Show reminder (would comment on PR)
+      - name: Get PR number
+        id: get_pr_number
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          else
+            # Get PR number from API for push events
+            BRANCH_NAME=${GITHUB_REF#refs/heads/}
+            PR_INFO=$(curl -s -H "Authorization: token ${{ github.token }}" \
+              "https://api.github.com/repos/${{ github.repository }}/pulls?head=${{ github.repository_owner }}:$BRANCH_NAME&state=open")
+            
+            if echo "$PR_INFO" | jq -e '.[0]' > /dev/null 2>&1; then
+              PR_NUMBER=$(echo "$PR_INFO" | jq -r '.[0].number')
+              echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+            else
+              echo "pr_number=" >> $GITHUB_OUTPUT
+            fi
+          fi
+          
+      - name: Comment on PR (no changelog)
+        if: steps.check_changelog.outputs.changelog_updated == 'false' && steps.get_pr_number.outputs.pr_number != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = `⚠️ **Changelog Reminder**
+            
+            This PR does not include changes to \`CHANGELOG.md\`
+            
+            Please consider updating the changelog if this PR includes:
+            - 🆕 New features
+            - 🐛 Bug fixes 
+            - 💥 Breaking changes
+            - 🔧 Important updates
+            
+            *This is just a friendly reminder!* 😊`;
+            
+            github.rest.issues.createComment({
+              issue_number: ${{ steps.get_pr_number.outputs.pr_number }},
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+            
+      - name: Fail check (no changelog)
         if: steps.check_changelog.outputs.changelog_updated == 'false'
         run: |
-          echo "📝 WOULD POST THIS COMMENT ON PR:"
-          echo "=================================="
-          echo "⚠️ This PR does not include changes to CHANGELOG.md"
-          echo ""
-          echo "Please consider updating the changelog if this PR includes:"
-          echo "- New features"
-          echo "- Bug fixes" 
-          echo "- Breaking changes"
-          echo "- Important updates"
-          echo ""
-          echo "Note: This is just a friendly reminder!"
-          echo ""
-          echo "❌ FAILING CHECK TO GET YOUR ATTENTION"
+          echo "❌ FAILING CHECK: CHANGELOG.md has not been updated"
+          echo "A comment has been posted on the PR to remind you."
           exit 1
           
       - name: Success message
