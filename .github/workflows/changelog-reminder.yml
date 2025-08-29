@@ -118,7 +118,9 @@ jobs:
             - 💥 Breaking changes
             - 🔧 Important updates
             
-            *This is just a friendly reminder!* 😊`;
+            *This is just a friendly reminder!* 😊
+            
+            <!-- CHANGELOG-REMINDER-BOT -->`;
             
             const response = await github.rest.issues.createComment({
               issue_number: ${{ steps.get_pr_number.outputs.pr_number }},
@@ -152,12 +154,13 @@ jobs:
               repo: context.repo.repo
             });
             
-            // Find and delete comments from github-actions bot that contain "Changelog Reminder"
+            // Find and delete comments from github-actions bot that contain our specific changelog reminder
             let deletedCount = 0;
             for (const comment of comments.data) {
+              // Very specific filter to only delete our changelog reminder comments
               if (comment.user.login === 'github-actions[bot]' && 
-                  comment.body.includes('Changelog Reminder')) {
-                console.log(`🗑️  Deleting comment ID: ${comment.id}`);
+                  comment.body.includes('<!-- CHANGELOG-REMINDER-BOT -->')) {
+                console.log(`🗑️  Deleting changelog reminder comment ID: ${comment.id}`);
                 await github.rest.issues.deleteComment({
                   comment_id: comment.id,
                   owner: context.repo.owner,
