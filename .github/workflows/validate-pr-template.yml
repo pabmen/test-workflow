@@ -1,0 +1,67 @@
+name: Validate PR template
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR template sections
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Helpers
+            function getSection(body, headingRegex) {
+              const after = body.split(headingRegex)[1] || "";
+              // Hasta el siguiente header de nivel 2
+              return (after.split(/^\s*##\s+/m)[0] || "").trim();
+            }
+            function countChecked(str) {
+              return (str.match(/\- \[[xX]\]/g) || []).length;
+            }
+
+            const body = (context.payload.pull_request.body || "").trim();
+
+            // --- Check: Description ---
+            const descSection = getSection(body, /^\s*##\s*Description\s*$/mi);
+            const cleanedDesc = descSection.replace(/<!--[\s\S]*?-->/g, "").trim();
+            const hasPlaceholder =
+              /This PR \[adds\/removes\/fixes\/replaces\]/i.test(descSection) ||
+              /Please do not leave this blank/i.test(descSection);
+
+            if (!cleanedDesc || hasPlaceholder) {
+              core.setFailed("❌ Please fill in the '## Description' section (remove the placeholder and write a real description).");
+              return;
+            }
+
+            // --- Check: Added tests? (exactly ONE checked) ---
+            const testsSection = getSection(body, /^\s*##\s*Added tests\?\s*$/mi);
+            const testsChecked = countChecked(testsSection);
+
+            if (!testsSection || testsChecked === 0) {
+              core.setFailed("❌ Please select exactly one option under '## Added tests?'. (None selected)");
+              return;
+            }
+            if (testsChecked > 1) {
+              core.setFailed(`❌ Please select exactly one option under '## Added tests?'. (${testsChecked} selected)`);
+              return;
+            }
+
+            // --- Check: What type of PR is this? (>=1 checked allowed) ---
+            const typeSection = getSection(
+              body,
+              /^\s*##\s*What type of PR is this\?\s*\(check all applicable\)\s*$/mi
+            );
+            const typeChecked = countChecked(typeSection);
+
+            if (!typeSection || typeChecked < 1) {
+              core.setFailed("❌ Please select at least one option under '## What type of PR is this?'.");
+              return;
+            }
+
+            core.info("✅ PR template is correctly filled.");
